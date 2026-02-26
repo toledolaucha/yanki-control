@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Product, Category } from '@/lib/types';
 import { formatARS } from '@/lib/store';
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, addProductBatch, reportProductLoss } from '@/app/actions';
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, addProductBatch, reportProductLoss, getPriceHistory } from '@/app/actions';
 
 export default function ProductosPage() {
     const { user, isAdmin } = useAuth();
@@ -21,7 +21,10 @@ export default function ProductosPage() {
     const [showModal, setShowModal] = useState(false);
     const [showStockModal, setShowStockModal] = useState(false);
     const [showLossModal, setShowLossModal] = useState(false);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [priceHistory, setPriceHistory] = useState<{ id: string, costPrice: number, salePrice: number, changedBy: string | null, createdAt: string }[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
     const [stockForm, setStockForm] = useState({ quantity: '', costPrice: '', provider: '' });
     const [lossForm, setLossForm] = useState({ quantity: '', reason: '' });
 
@@ -38,6 +41,7 @@ export default function ProductosPage() {
     });
     const [saving, setSaving] = useState(false);
     const [searchingBarcode, setSearchingBarcode] = useState(false);
+    const [productImage, setProductImage] = useState<string | null>(null);
 
     const reload = useCallback(async () => {
         try {
@@ -98,23 +102,71 @@ export default function ProductosPage() {
         setShowLossModal(true);
     }
 
+    async function openHistory(p: Product) {
+        setSelectedProduct(p);
+        setPriceHistory([]);
+        setShowHistoryModal(true);
+        setLoadingHistory(true);
+        try {
+            const h = await getPriceHistory(p.id);
+            setPriceHistory(h);
+        } catch {
+            toast('Error cargando historial', 'error');
+        } finally {
+            setLoadingHistory(false);
+        }
+    }
+
     async function handleBarcodeChange(val: string) {
         setForm(f => ({ ...f, barcode: val }));
+        if (!val) { setProductImage(null); return; }
 
         const isEanLength = val.length === 8 || val.length === 13 || val.length === 14;
         if (!editingId && form.name === '' && isEanLength) {
             setSearchingBarcode(true);
+            setProductImage(null);
             try {
                 const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${val}.json`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.status === 1 && data.product && data.product.product_name) {
-                        setForm(f => ({ ...f, barcode: val, name: data.product.product_name }));
-                        toast('Producto localizado automáticamente', 'success');
+                    if (data.status === 1 && data.product) {
+                        const p = data.product;
+
+                        // 1. Nombre: product_name, o fallback a brands
+                        const name = p.product_name || p.brands || '';
+
+                        // 2. Imagen
+                        const image = p.image_front_url || p.image_url || null;
+                        setProductImage(image);
+
+                        // 3. Categoría: intentar matchear con las categorías del sistema
+                        let matchedCategoryId = '';
+                        if (p.categories && categoriesList.length > 0) {
+                            const apiCats = p.categories.toLowerCase();
+                            const match = categoriesList.find(c =>
+                                apiCats.includes(c.name.toLowerCase())
+                            );
+                            if (match) matchedCategoryId = match.id;
+                        }
+
+                        if (name) {
+                            setForm(f => ({
+                                ...f,
+                                barcode: val,
+                                name,
+                                ...(matchedCategoryId ? { categoryId: matchedCategoryId } : {})
+                            }));
+                            const extras = [image ? '📷 imagen' : '', matchedCategoryId ? '🏷️ categoría' : ''].filter(Boolean).join(', ');
+                            toast(`Producto localizado automáticamente${extras ? ` (+ ${extras})` : ''}`, 'success');
+                        } else {
+                            toast('Código encontrado pero sin nombre en la base global', 'info');
+                        }
+                    } else {
+                        toast('Código no encontrado en la base global', 'info');
                     }
                 }
             } catch (e) {
-                console.error("Error buscando en Open Food Facts:", e);
+                console.error('Error buscando en Open Food Facts:', e);
             } finally {
                 setSearchingBarcode(false);
             }
@@ -308,8 +360,8 @@ export default function ProductosPage() {
                                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatARS(p.salePrice)}</td>
                                         <td style={{ textAlign: 'center' }}>
                                             <span className={`badge ${p.stock <= 0 ? 'badge-danger'
-                                                    : p.minStock > 0 && p.stock <= p.minStock ? 'badge-warning'
-                                                        : 'badge-success'
+                                                : p.minStock > 0 && p.stock <= p.minStock ? 'badge-warning'
+                                                    : 'badge-success'
                                                 }`}>
                                                 {p.stock}
                                             </span>
@@ -321,6 +373,7 @@ export default function ProductosPage() {
                                             <button className="btn btn-primary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => openStock(p)}>📦 Lote</button>
                                             <button className="btn btn-sm" style={{ marginRight: '0.5rem', background: '#f59e0b', color: 'white', border: 'none' }} onClick={() => openLoss(p)}>📉 Merma</button>
                                             <button className="btn btn-secondary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => openEdit(p)}>✏️ Editar</button>
+                                            <button className="btn btn-sm" style={{ marginRight: '0.5rem', background: '#6366f1', color: 'white', border: 'none' }} onClick={() => openHistory(p)}>📉 Precios</button>
                                             <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p.id)}>🗑️</button>
                                         </td>
                                     </tr>
@@ -346,6 +399,23 @@ export default function ProductosPage() {
                                     {searchingBarcode && <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text2)' }}>Buscando...</div>}
                                 </div>
                             </div>
+
+                            {/* Product image preview from Open Food Facts */}
+                            {productImage && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg3)', borderRadius: '8px' }}>
+                                    <img
+                                        src={productImage}
+                                        alt="Imagen del producto"
+                                        style={{ width: '64px', height: '64px', objectFit: 'contain', borderRadius: '6px', background: 'white', padding: '4px' }}
+                                        onError={() => setProductImage(null)}
+                                    />
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text2)' }}>Imagen encontrada en Open Food Facts</div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text2)', marginTop: '2px' }}>La imagen es orientativa, no se guarda en el sistema.</div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="input-label">Nombre del Producto</label>
                                 <input className="input" type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej: Coca Cola 2L" />
@@ -471,6 +541,56 @@ export default function ProductosPage() {
                                 <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowLossModal(false)}>Cancelar</button>
                                 <button className="btn" style={{ flex: 1, background: '#f59e0b', color: 'white', border: 'none' }} onClick={handleSaveLoss} disabled={saving}>{saving ? 'Procesando...' : 'Confirmar Baja'}</button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Price History Modal */}
+            {showHistoryModal && selectedProduct && (
+                <div className="modal-backdrop" onClick={() => setShowHistoryModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                            📉 Historial de Precios
+                        </h2>
+                        <p style={{ color: 'var(--text2)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                            {selectedProduct.name}
+                        </p>
+                        {loadingHistory ? (
+                            <div style={{ color: 'var(--text2)', textAlign: 'center', padding: '1rem' }}>Cargando...</div>
+                        ) : priceHistory.length === 0 ? (
+                            <div style={{ color: 'var(--text2)', textAlign: 'center', padding: '1.5rem', fontSize: '0.85rem' }}>
+                                Sin cambios de precio registrados.
+                                <br />
+                                <small>Los cambios se guardan automáticamente al editar un producto.</small>
+                            </div>
+                        ) : (
+                            <div className="table-wrap" style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th style={{ textAlign: 'right' }}>Costo</th>
+                                            <th style={{ textAlign: 'right' }}>Venta</th>
+                                            <th>Por</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {priceHistory.map(h => (
+                                            <tr key={h.id}>
+                                                <td style={{ fontSize: '0.78rem', color: 'var(--text2)' }}>
+                                                    {new Date(h.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                </td>
+                                                <td style={{ textAlign: 'right', color: '#8b5cf6' }}>{formatARS(h.costPrice)}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatARS(h.salePrice)}</td>
+                                                <td style={{ fontSize: '0.78rem', color: 'var(--text2)' }}>{h.changedBy || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        <div style={{ marginTop: '1rem' }}>
+                            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowHistoryModal(false)}>Cerrar</button>
                         </div>
                     </div>
                 </div>

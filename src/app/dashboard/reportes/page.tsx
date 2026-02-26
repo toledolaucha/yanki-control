@@ -66,6 +66,36 @@ export default function ReportesPage() {
         URL.revokeObjectURL(url);
     }
 
+    async function exportExcel() {
+        try {
+            const XLSX = await import('xlsx');
+            const wsData = [
+                ['Fecha', 'Período', 'Operador', 'Estado', 'Ventas', 'Costo Mcda.', 'Ganancia Neta', 'Egresos Caja', 'Balance', 'Movimientos'],
+                ...rows.map(r => [
+                    r.shift.date,
+                    r.shift.period,
+                    r.operatorName,
+                    r.shift.status,
+                    r.ventas,
+                    r.costoMercaderia,
+                    r.gananciaNeta,
+                    r.egresos,
+                    r.balance,
+                    r.txCount
+                ])
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            // Column widths
+            ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+            XLSX.writeFile(wb, `reporte_${from}_${to}.xlsx`);
+            toast('Excel exportado correctamente', 'success');
+        } catch (e) {
+            toast('Error al exportar Excel', 'error');
+        }
+    }
+
     const totalVentas = rows.reduce((a, b) => a + b.ventas, 0);
     const totalEgresos = rows.reduce((a, b) => a + b.egresos, 0);
     const totalBalance = rows.reduce((a, b) => a + b.balance, 0);
@@ -73,18 +103,44 @@ export default function ReportesPage() {
     const totalMermas = reportsData.totalMermas;
     const totalGanancia = rows.reduce((a, b) => a + b.gananciaNeta, 0) - totalMermas;
 
+    // --- Comparativa por período ---
     const periodColors: Record<string, string> = {
+        MANANA: '#f59e0b',
+        TARDE: '#3b82f6',
+        NOCHE: '#6366f1',
         mañana: '#f59e0b',
         tarde: '#3b82f6',
         noche: '#6366f1',
     };
+    const periodos = ['mañana', 'tarde', 'noche', 'MANANA', 'TARDE', 'NOCHE'];
+    const byPeriodo: Record<string, { ventas: number, ganancia: number, count: number }> = {};
+    for (const r of rows) {
+        const p = r.shift.period;
+        if (!byPeriodo[p]) byPeriodo[p] = { ventas: 0, ganancia: 0, count: 0 };
+        byPeriodo[p].ventas += r.ventas;
+        byPeriodo[p].ganancia += r.gananciaNeta;
+        byPeriodo[p].count += 1;
+    }
+
+    // --- Comparativa por operador ---
+    const byOperador: Record<string, { ventas: number, ganancia: number, count: number }> = {};
+    for (const r of rows) {
+        const op = r.operatorName;
+        if (!byOperador[op]) byOperador[op] = { ventas: 0, ganancia: 0, count: 0 };
+        byOperador[op].ventas += r.ventas;
+        byOperador[op].ganancia += r.gananciaNeta;
+        byOperador[op].count += 1;
+    }
+    const operadores = Object.entries(byOperador).sort((a, b) => b[1].ventas - a[1].ventas);
+    const maxOpVentas = Math.max(...operadores.map(([, v]) => v.ventas), 1);
+    const maxPeriodVentas = Math.max(...Object.values(byPeriodo).map(v => v.ventas), 1);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>📈 Reportes</h1>
                 <p style={{ color: 'var(--text2)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                    Exportá los datos de turnos por rango de fechas
+                    Exportá y analizá los datos de turnos por rango de fechas
                 </p>
             </div>
 
@@ -103,10 +159,18 @@ export default function ReportesPage() {
                         {loading ? 'Cargando...' : '🔍 Filtrar'}
                     </button>
                     <button className="btn btn-secondary" onClick={exportCSV} disabled={rows.length === 0}>
-                        📥 Exportar CSV
+                        📥 CSV
                     </button>
                     <button className="btn btn-secondary" onClick={exportJSON} disabled={rows.length === 0}>
-                        📋 Exportar JSON
+                        📋 JSON
+                    </button>
+                    <button
+                        className="btn"
+                        style={{ background: '#16a34a', color: 'white', border: 'none', fontWeight: 700 }}
+                        onClick={exportExcel}
+                        disabled={rows.length === 0}
+                    >
+                        📊 Excel
                     </button>
                 </div>
             </div>
@@ -149,6 +213,81 @@ export default function ReportesPage() {
                         </div>
                     )}
 
+                    {/* Comparativa de Turnos */}
+                    {rows.length > 1 && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                            {/* Por período */}
+                            <div className="card">
+                                <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: '1rem' }}>
+                                    📊 Ventas por Período
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {Object.entries(byPeriodo).map(([period, stats]) => (
+                                        <div key={period}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.8rem' }}>
+                                                <span style={{ fontWeight: 600, color: periodColors[period] ?? 'var(--text)' }}>
+                                                    {period}
+                                                </span>
+                                                <span style={{ color: 'var(--text2)' }}>
+                                                    {formatARS(stats.ventas)} · {stats.count} turn.
+                                                </span>
+                                            </div>
+                                            <div style={{ background: 'var(--bg3)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${(stats.ventas / maxPeriodVentas) * 100}%`,
+                                                    height: '100%',
+                                                    background: periodColors[period] ?? '#6366f1',
+                                                    borderRadius: '4px',
+                                                    transition: 'width 0.4s'
+                                                }} />
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text2)', marginTop: '2px' }}>
+                                                Ganancia: {formatARS(stats.ganancia)} · Prom: {formatARS(stats.ventas / stats.count)}/turno
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {Object.keys(byPeriodo).length === 0 && (
+                                        <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>Sin datos</div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Por operador */}
+                            <div className="card">
+                                <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: '1rem' }}>
+                                    👤 Ventas por Operador
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {operadores.map(([name, stats]) => (
+                                        <div key={name}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.8rem' }}>
+                                                <span style={{ fontWeight: 600 }}>{name}</span>
+                                                <span style={{ color: 'var(--text2)' }}>
+                                                    {formatARS(stats.ventas)} · {stats.count} turn.
+                                                </span>
+                                            </div>
+                                            <div style={{ background: 'var(--bg3)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${(stats.ventas / maxOpVentas) * 100}%`,
+                                                    height: '100%',
+                                                    background: 'var(--accent1)',
+                                                    borderRadius: '4px',
+                                                    transition: 'width 0.4s'
+                                                }} />
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text2)', marginTop: '2px' }}>
+                                                Ganancia: {formatARS(stats.ganancia)} · Prom: {formatARS(stats.ventas / stats.count)}/turno
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {operadores.length === 0 && (
+                                        <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>Sin datos</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Table */}
                     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                         <div className="table-wrap">
@@ -171,7 +310,7 @@ export default function ReportesPage() {
                                 <tbody>
                                     {rows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text2)' }}>
+                                            <td colSpan={11} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text2)' }}>
                                                 No hay turnos en el rango seleccionado
                                             </td>
                                         </tr>
