@@ -788,16 +788,37 @@ export async function getDashboardMetrics() {
             const items = JSON.parse(t.receipt_items);
             for (const item of items) {
                 const key = item.id || item.productId || item.name;
-                const displayName = item.name || item.productId || key;
                 if (!salesMap[key]) {
-                    salesMap[key] = { id: item.id || item.productId, name: displayName, quantity: 0 };
+                    // name may be missing in old sales — resolve later
+                    salesMap[key] = { id: item.id || item.productId, name: item.name || '', quantity: 0 };
                 }
                 salesMap[key].quantity += item.quantity;
             }
         } catch (e) { }
     }
 
+    // Resolve missing names from DB (for sales recorded before the name fix)
+    const missingIds = Object.values(salesMap)
+        .filter(p => !p.name && p.id)
+        .map(p => p.id as string);
+
+    if (missingIds.length > 0) {
+        const dbProducts = await prisma.product.findMany({
+            where: { id: { in: missingIds } },
+            select: { id: true, name: true }
+        });
+        const nameById: Record<string, string> = {};
+        for (const p of dbProducts) nameById[p.id] = p.name;
+
+        for (const entry of Object.values(salesMap)) {
+            if (!entry.name && entry.id && nameById[entry.id]) {
+                entry.name = nameById[entry.id];
+            }
+        }
+    }
+
     const topSelling = Object.values(salesMap)
+        .filter(p => p.name) // skip entries we couldn't resolve
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 5);
 
