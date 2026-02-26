@@ -787,18 +787,54 @@ export async function getDashboardMetrics() {
         try {
             const items = JSON.parse(t.receipt_items);
             for (const item of items) {
-                const key = item.id || item.name;
+                const key = item.id || item.productId || item.name;
                 if (!salesMap[key]) {
-                    salesMap[key] = { id: item.id, name: item.name, quantity: 0 };
+                    // name may be missing in old sales — resolve later
+                    salesMap[key] = { id: item.id || item.productId, name: item.name || '', quantity: 0 };
                 }
                 salesMap[key].quantity += item.quantity;
             }
         } catch (e) { }
     }
 
+    // Resolve missing names from DB (for sales recorded before the name fix)
+    const missingIds = Object.values(salesMap)
+        .filter(p => !p.name && p.id)
+        .map(p => p.id as string);
+
+    if (missingIds.length > 0) {
+        const dbProducts = await prisma.product.findMany({
+            where: { id: { in: missingIds } },
+            select: { id: true, name: true }
+        });
+        const nameById: Record<string, string> = {};
+        for (const p of dbProducts) nameById[p.id] = p.name;
+
+        for (const entry of Object.values(salesMap)) {
+            if (!entry.name && entry.id && nameById[entry.id]) {
+                entry.name = nameById[entry.id];
+            }
+        }
+    }
+
     const topSelling = Object.values(salesMap)
+        .filter(p => p.name) // skip entries we couldn't resolve
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 5);
+
+    // 3. Low stock products (stock < min_stock, only when min_stock > 0)
+    const lowStockProducts = await (prisma.product as any).findMany({
+        where: {
+            is_active: true,
+            min_stock: { gt: 0 }
+        },
+        select: { id: true, name: true, stock: true, min_stock: true },
+        orderBy: { name: 'asc' }
+    });
+
+    const lowStock = lowStockProducts
+        .filter((p: any) => p.stock < p.min_stock)
+        .map((p: any) => ({ id: p.id, name: p.name, stock: p.stock, minStock: p.min_stock }));
 
     return {
         today: {
@@ -812,7 +848,8 @@ export async function getDashboardMetrics() {
         },
         last7,
         topMargin,
-        topSelling
+        topSelling,
+        lowStock
     };
 }
 
@@ -939,6 +976,7 @@ function mapProduct(dbProduct: any): Product {
         costPrice: dbProduct.cost_price,
         salePrice: dbProduct.sale_price,
         stock: dbProduct.stock,
+        minStock: dbProduct.min_stock ?? 0,
         categoryId: dbProduct.category_id,
         category: dbProduct.category ? {
             id: dbProduct.category.id,
@@ -962,7 +1000,7 @@ export async function getProducts(): Promise<Product[]> {
     return products.map(mapProduct);
 }
 
-export async function createProduct(data: { name: string, barcode?: string, costPrice: number, salePrice: number, stock: number, categoryId?: string }): Promise<Product> {
+export async function createProduct(data: { name: string, barcode?: string, costPrice: number, salePrice: number, stock: number, minStock?: number, categoryId?: string }): Promise<Product> {
     const caller = await getUser();
     if (!caller) throw new Error('No autorizado');
 
@@ -971,13 +1009,14 @@ export async function createProduct(data: { name: string, barcode?: string, cost
         if (existing) throw new Error('El código de barras ya está en uso');
     }
 
-    const p = await prisma.product.create({
+    const p = await (prisma.product as any).create({
         data: {
             name: data.name,
             barcode: data.barcode || null,
             cost_price: data.costPrice,
             sale_price: data.salePrice,
             stock: data.stock,
+            min_stock: data.minStock ?? 0,
             category_id: data.categoryId || null
         },
         include: { category: true }
@@ -997,7 +1036,7 @@ export async function createProduct(data: { name: string, barcode?: string, cost
     return mapProduct(p);
 }
 
-export async function updateProduct(id: string, data: { name: string, barcode?: string, costPrice: number, salePrice: number, stock: number, categoryId?: string }): Promise<Product> {
+export async function updateProduct(id: string, data: { name: string, barcode?: string, costPrice: number, salePrice: number, stock: number, minStock?: number, categoryId?: string }): Promise<Product> {
     const caller = await getUser();
     if (!caller) throw new Error('No autorizado');
 
@@ -1006,7 +1045,7 @@ export async function updateProduct(id: string, data: { name: string, barcode?: 
         if (existing && existing.id !== id) throw new Error('El código de barras ya está en uso por otro producto');
     }
 
-    const p = await prisma.product.update({
+    const p = await (prisma.product as any).update({
         where: { id },
         data: {
             name: data.name,
@@ -1014,6 +1053,7 @@ export async function updateProduct(id: string, data: { name: string, barcode?: 
             cost_price: data.costPrice,
             sale_price: data.salePrice,
             stock: data.stock,
+            min_stock: data.minStock ?? 0,
             category_id: data.categoryId || null
         },
         include: { category: true }
@@ -1242,6 +1282,7 @@ export async function processSale(shiftId: string, items: { productId: string, q
 
             enrichedItems.push({
                 ...item,
+                name: p.name, // Save product name for topSelling analytics
                 cost_price: totalItemCogs // Save total cost of this line item quantity
             });
 

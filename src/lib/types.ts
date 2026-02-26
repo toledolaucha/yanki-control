@@ -72,6 +72,7 @@ export interface Product {
   costPrice: number;
   salePrice: number;
   stock: number;
+  minStock: number;
   categoryId: string | null;
   category?: Category | null;
   isActive: boolean;
