@@ -38,6 +38,7 @@ export default function ProductosPage() {
     });
     const [saving, setSaving] = useState(false);
     const [searchingBarcode, setSearchingBarcode] = useState(false);
+    const [productImage, setProductImage] = useState<string | null>(null);
 
     const reload = useCallback(async () => {
         try {
@@ -100,21 +101,54 @@ export default function ProductosPage() {
 
     async function handleBarcodeChange(val: string) {
         setForm(f => ({ ...f, barcode: val }));
+        if (!val) { setProductImage(null); return; }
 
         const isEanLength = val.length === 8 || val.length === 13 || val.length === 14;
         if (!editingId && form.name === '' && isEanLength) {
             setSearchingBarcode(true);
+            setProductImage(null);
             try {
                 const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${val}.json`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.status === 1 && data.product && data.product.product_name) {
-                        setForm(f => ({ ...f, barcode: val, name: data.product.product_name }));
-                        toast('Producto localizado automáticamente', 'success');
+                    if (data.status === 1 && data.product) {
+                        const p = data.product;
+
+                        // 1. Nombre: product_name, o fallback a brands
+                        const name = p.product_name || p.brands || '';
+
+                        // 2. Imagen
+                        const image = p.image_front_url || p.image_url || null;
+                        setProductImage(image);
+
+                        // 3. Categoría: intentar matchear con las categorías del sistema
+                        let matchedCategoryId = '';
+                        if (p.categories && categoriesList.length > 0) {
+                            const apiCats = p.categories.toLowerCase();
+                            const match = categoriesList.find(c =>
+                                apiCats.includes(c.name.toLowerCase())
+                            );
+                            if (match) matchedCategoryId = match.id;
+                        }
+
+                        if (name) {
+                            setForm(f => ({
+                                ...f,
+                                barcode: val,
+                                name,
+                                ...(matchedCategoryId ? { categoryId: matchedCategoryId } : {})
+                            }));
+                            const extras = [image ? '📷 imagen' : '', matchedCategoryId ? '🏷️ categoría' : ''].filter(Boolean).join(', ');
+                            toast(`Producto localizado automáticamente${extras ? ` (+ ${extras})` : ''}`, 'success');
+                        } else {
+                            toast('Código encontrado pero sin nombre en la base global', 'info');
+                        }
+                    } else {
+                        toast('Código no encontrado en la base global', 'info');
                     }
                 }
             } catch (e) {
-                console.error("Error buscando en Open Food Facts:", e);
+                console.error('Error buscando en Open Food Facts:', e);
             } finally {
                 setSearchingBarcode(false);
             }
@@ -308,8 +342,8 @@ export default function ProductosPage() {
                                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatARS(p.salePrice)}</td>
                                         <td style={{ textAlign: 'center' }}>
                                             <span className={`badge ${p.stock <= 0 ? 'badge-danger'
-                                                    : p.minStock > 0 && p.stock <= p.minStock ? 'badge-warning'
-                                                        : 'badge-success'
+                                                : p.minStock > 0 && p.stock <= p.minStock ? 'badge-warning'
+                                                    : 'badge-success'
                                                 }`}>
                                                 {p.stock}
                                             </span>
@@ -346,6 +380,23 @@ export default function ProductosPage() {
                                     {searchingBarcode && <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text2)' }}>Buscando...</div>}
                                 </div>
                             </div>
+
+                            {/* Product image preview from Open Food Facts */}
+                            {productImage && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg3)', borderRadius: '8px' }}>
+                                    <img
+                                        src={productImage}
+                                        alt="Imagen del producto"
+                                        style={{ width: '64px', height: '64px', objectFit: 'contain', borderRadius: '6px', background: 'white', padding: '4px' }}
+                                        onError={() => setProductImage(null)}
+                                    />
+                                    <div>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text2)' }}>Imagen encontrada en Open Food Facts</div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text2)', marginTop: '2px' }}>La imagen es orientativa, no se guarda en el sistema.</div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="input-label">Nombre del Producto</label>
                                 <input className="input" type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej: Coca Cola 2L" />
