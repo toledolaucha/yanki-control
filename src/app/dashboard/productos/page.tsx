@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Product, Category } from '@/lib/types';
 import { formatARS } from '@/lib/store';
-import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, addProductBatch, reportProductLoss } from '@/app/actions';
+import { getProducts, createProduct, updateProduct, deleteProduct, getCategories, addProductBatch, reportProductLoss, getPriceHistory } from '@/app/actions';
 
 export default function ProductosPage() {
     const { user, isAdmin } = useAuth();
@@ -21,7 +21,10 @@ export default function ProductosPage() {
     const [showModal, setShowModal] = useState(false);
     const [showStockModal, setShowStockModal] = useState(false);
     const [showLossModal, setShowLossModal] = useState(false);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [priceHistory, setPriceHistory] = useState<{ id: string, costPrice: number, salePrice: number, changedBy: string | null, createdAt: string }[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
     const [stockForm, setStockForm] = useState({ quantity: '', costPrice: '', provider: '' });
     const [lossForm, setLossForm] = useState({ quantity: '', reason: '' });
 
@@ -97,6 +100,21 @@ export default function ProductosPage() {
         setSelectedProduct(p);
         setLossForm({ quantity: '', reason: '' });
         setShowLossModal(true);
+    }
+
+    async function openHistory(p: Product) {
+        setSelectedProduct(p);
+        setPriceHistory([]);
+        setShowHistoryModal(true);
+        setLoadingHistory(true);
+        try {
+            const h = await getPriceHistory(p.id);
+            setPriceHistory(h);
+        } catch {
+            toast('Error cargando historial', 'error');
+        } finally {
+            setLoadingHistory(false);
+        }
     }
 
     async function handleBarcodeChange(val: string) {
@@ -355,6 +373,7 @@ export default function ProductosPage() {
                                             <button className="btn btn-primary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => openStock(p)}>📦 Lote</button>
                                             <button className="btn btn-sm" style={{ marginRight: '0.5rem', background: '#f59e0b', color: 'white', border: 'none' }} onClick={() => openLoss(p)}>📉 Merma</button>
                                             <button className="btn btn-secondary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => openEdit(p)}>✏️ Editar</button>
+                                            <button className="btn btn-sm" style={{ marginRight: '0.5rem', background: '#6366f1', color: 'white', border: 'none' }} onClick={() => openHistory(p)}>📉 Precios</button>
                                             <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p.id)}>🗑️</button>
                                         </td>
                                     </tr>
@@ -522,6 +541,56 @@ export default function ProductosPage() {
                                 <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowLossModal(false)}>Cancelar</button>
                                 <button className="btn" style={{ flex: 1, background: '#f59e0b', color: 'white', border: 'none' }} onClick={handleSaveLoss} disabled={saving}>{saving ? 'Procesando...' : 'Confirmar Baja'}</button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Price History Modal */}
+            {showHistoryModal && selectedProduct && (
+                <div className="modal-backdrop" onClick={() => setShowHistoryModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                            📉 Historial de Precios
+                        </h2>
+                        <p style={{ color: 'var(--text2)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                            {selectedProduct.name}
+                        </p>
+                        {loadingHistory ? (
+                            <div style={{ color: 'var(--text2)', textAlign: 'center', padding: '1rem' }}>Cargando...</div>
+                        ) : priceHistory.length === 0 ? (
+                            <div style={{ color: 'var(--text2)', textAlign: 'center', padding: '1.5rem', fontSize: '0.85rem' }}>
+                                Sin cambios de precio registrados.
+                                <br />
+                                <small>Los cambios se guardan automáticamente al editar un producto.</small>
+                            </div>
+                        ) : (
+                            <div className="table-wrap" style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th style={{ textAlign: 'right' }}>Costo</th>
+                                            <th style={{ textAlign: 'right' }}>Venta</th>
+                                            <th>Por</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {priceHistory.map(h => (
+                                            <tr key={h.id}>
+                                                <td style={{ fontSize: '0.78rem', color: 'var(--text2)' }}>
+                                                    {new Date(h.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                </td>
+                                                <td style={{ textAlign: 'right', color: '#8b5cf6' }}>{formatARS(h.costPrice)}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatARS(h.salePrice)}</td>
+                                                <td style={{ fontSize: '0.78rem', color: 'var(--text2)' }}>{h.changedBy || '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        <div style={{ marginTop: '1rem' }}>
+                            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowHistoryModal(false)}>Cerrar</button>
                         </div>
                     </div>
                 </div>

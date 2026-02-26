@@ -1045,6 +1045,9 @@ export async function updateProduct(id: string, data: { name: string, barcode?: 
         if (existing && existing.id !== id) throw new Error('El código de barras ya está en uso por otro producto');
     }
 
+    // Get current prices before update to detect changes
+    const current = await prisma.product.findUnique({ where: { id }, select: { cost_price: true, sale_price: true } });
+
     const p = await (prisma.product as any).update({
         where: { id },
         data: {
@@ -1059,6 +1062,18 @@ export async function updateProduct(id: string, data: { name: string, barcode?: 
         include: { category: true }
     });
 
+    // Record price history if cost or sale price changed
+    if (current && (current.cost_price !== data.costPrice || current.sale_price !== data.salePrice)) {
+        await (prisma as any).priceHistory.create({
+            data: {
+                product_id: id,
+                cost_price: data.costPrice,
+                sale_price: data.salePrice,
+                changed_by: caller.name
+            }
+        });
+    }
+
     await prisma.auditLog.create({
         data: {
             user_id: caller.id,
@@ -1072,6 +1087,26 @@ export async function updateProduct(id: string, data: { name: string, barcode?: 
     revalidatePath('/dashboard/productos');
     return mapProduct(p);
 }
+
+export async function getPriceHistory(productId: string): Promise<{ id: string, costPrice: number, salePrice: number, changedBy: string | null, createdAt: string }[]> {
+    const caller = await getUser();
+    if (!caller) throw new Error('No autorizado');
+
+    const history = await (prisma as any).priceHistory.findMany({
+        where: { product_id: productId },
+        orderBy: { created_at: 'desc' },
+        take: 30
+    });
+
+    return history.map((h: any) => ({
+        id: h.id,
+        costPrice: h.cost_price,
+        salePrice: h.sale_price,
+        changedBy: h.changed_by,
+        createdAt: h.created_at.toISOString()
+    }));
+}
+
 
 export async function addProductBatch(productId: string, quantity: number, costPrice: number, provider?: string): Promise<void> {
     const caller = await getUser();

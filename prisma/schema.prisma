@@ -95,8 +95,9 @@ model Product {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  batches     ProductBatch[]
-  losses      ProductLoss[]
+  batches       ProductBatch[]
+  losses        ProductLoss[]
+  priceHistory  PriceHistory[]
 }
 
 model ProductBatch {
@@ -119,5 +120,15 @@ model ProductLoss {
   reason      String   // Razón de la merma (Ej: vencido, roto)
   user_id     String?
   user        User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  created_at  DateTime @default(now())
+}
+
+model PriceHistory {
+  id          String   @id @default(uuid())
+  product_id  String
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  cost_price  Float
+  sale_price  Float
+  changed_by  String?  // user name (snapshot)
   created_at  DateTime @default(now())
 }
