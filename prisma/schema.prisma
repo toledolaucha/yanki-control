@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String        @id @default(uuid())
+  name          String
+  email         String        @unique
+  password_hash String
+  role          String        @default("EMPLEADO") // 'ADMIN' | 'EMPLEADO'
+  is_active     Boolean       @default(true)
+  created_at    DateTime      @default(now())
+
+  // Relaciones
+  shifts              Shift[]
+  transactions        Transaction[]
+  audit_logs          AuditLog[]
+  losses              ProductLoss[]
+}
+
+model Shift {
+  id           String      @id @default(uuid())
+  user_id      String?
+  user         User?       @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  shift_type   String      // 'MANANA' | 'TARDE' | 'NOCHE'
+  started_at   DateTime    @default(now())
+  ended_at     DateTime?
+  initial_cash Float
+  initial_mp   Float
+  final_cash   Float?
+  final_mp     Float?
+  status       String      @default("OPEN") // 'OPEN' | 'CLOSED'
+  created_at   DateTime    @default(now())
+
+  // Relaciones
+  transactions Transaction[]
+}
+
+model Transaction {
+  id                    String              @id @default(uuid())
+  shift_id              String?
+  shift                 Shift?              @relation(fields: [shift_id], references: [id])
+  user_id               String?
+  user                  User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  type                  String      // 'INCOME' | 'EXPENSE' | 'TRANSFER'
+  category              String      // 'SALE' | 'PROVIDER_PAYMENT' | ...
+  source_container      String      // 'CASH' | 'MERCADO_PAGO' | 'PETTY_CASH' | 'SAFE'
+  destination_container String?     
+  amount                Float
+  description           String
+  receipt_items         String?     // Guarda el JSON del carrito para devoluciones/anulaciones
+  created_at            DateTime            @default(now())
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  user_id       String?
+  user          User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  action        String
+  entity        String
+  entity_id     String
+  previous_data String?  // JSON string
+  new_data      String?  // JSON string
+  created_at    DateTime @default(now())
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  barcode     String?  @unique
+  cost_price  Float
+  sale_price  Float
+  stock       Int      @default(0)
+  
+  category_id String?
+  category    Category? @relation(fields: [category_id], references: [id])
+  
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  batches     ProductBatch[]
+  losses      ProductLoss[]
+}
+
+model ProductBatch {
+  id                String   @id @default(uuid())
+  product_id        String
+  product           Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  cost_price        Float
+  initial_quantity  Int
+  current_quantity  Int
+  provider          String?
+  created_at        DateTime @default(now())
+}
+
+model ProductLoss {
+  id          String   @id @default(uuid())
+  product_id  String
+  product     Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  quantity    Int
+  cogs        Float    // Cost of Goods Sold (Costo real de las unidades dadas de baja basado en FIFO)
+  reason      String   // Razón de la merma (Ej: vencido, roto)
+  user_id     String?
+  user        User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  created_at  DateTime @default(now())
+}
