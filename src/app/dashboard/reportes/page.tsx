@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { formatARS, formatDate } from '@/lib/store';
-import { getReportsData, ReportRow, ReportsData } from '@/app/actions';
+import { getReportsData, deleteShift, ReportRow, ReportsData } from '@/app/actions';
 
 export default function ReportesPage() {
     const { isAdmin } = useAuth();
@@ -33,6 +33,17 @@ export default function ReportesPage() {
             setLoading(false);
         }
     }, [from, to, toast]);
+
+    async function handleDeleteShift(shiftId: string) {
+        if (!confirm('¿Seguro que querés eliminar este turno y todas sus transacciones? Esta acción no se puede deshacer.')) return;
+        try {
+            await deleteShift(shiftId);
+            toast('Turno eliminado correctamente', 'success');
+            fetchReports();
+        } catch (e: any) {
+            toast(e?.message || 'Error al eliminar el turno', 'error');
+        }
+    }
 
     useEffect(() => {
         if (!isAdmin) { router.replace('/dashboard'); return; }
@@ -325,8 +336,18 @@ export default function ReportesPage() {
                                                 </td>
                                                 <td style={{ fontSize: '0.8rem' }}>{r.operatorName}</td>
                                                 <td>
-                                                    <span className={`badge ${r.shift.status === 'open' ? 'badge-warning' : 'badge-success'}`}>
-                                                        {r.shift.status}
+                                                    <span style={{
+                                                        display: 'inline-block',
+                                                        padding: '0.15rem 0.55rem',
+                                                        borderRadius: '999px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        textTransform: 'uppercase',
+                                                        background: r.shift.status === 'open' ? '#dcfce7' : '#fee2e2',
+                                                        color: r.shift.status === 'open' ? '#16a34a' : '#dc2626',
+                                                        border: `1px solid ${r.shift.status === 'open' ? '#86efac' : '#fca5a5'}`,
+                                                    }}>
+                                                        {r.shift.status === 'open' ? 'Abierto' : 'Cerrado'}
                                                     </span>
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>
@@ -346,9 +367,20 @@ export default function ReportesPage() {
                                                 </td>
                                                 <td style={{ textAlign: 'center', color: 'var(--text2)' }}>{r.txCount}</td>
                                                 <td>
-                                                    <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => router.push(`/dashboard/turno?id=${r.shift.id}`)}>
-                                                        Ver / Editar
-                                                    </button>
+                                                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                                        <button className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => router.push(`/dashboard/turno?id=${r.shift.id}`)}>
+                                                            Ver
+                                                        </button>
+                                                        {r.shift.status === 'closed' && (
+                                                            <button
+                                                                className="btn btn-sm"
+                                                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', background: '#dc2626', color: 'white', border: 'none', fontWeight: 700 }}
+                                                                onClick={() => handleDeleteShift(r.shift.id)}
+                                                            >
+                                                                🗑
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
