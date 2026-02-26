@@ -787,9 +787,10 @@ export async function getDashboardMetrics() {
         try {
             const items = JSON.parse(t.receipt_items);
             for (const item of items) {
-                const key = item.id || item.name;
+                const key = item.id || item.productId || item.name;
+                const displayName = item.name || item.productId || key;
                 if (!salesMap[key]) {
-                    salesMap[key] = { id: item.id, name: item.name, quantity: 0 };
+                    salesMap[key] = { id: item.id || item.productId, name: displayName, quantity: 0 };
                 }
                 salesMap[key].quantity += item.quantity;
             }
@@ -1242,6 +1243,7 @@ export async function processSale(shiftId: string, items: { productId: string, q
 
             enrichedItems.push({
                 ...item,
+                name: p.name, // Save product name for topSelling analytics
                 cost_price: totalItemCogs // Save total cost of this line item quantity
             });
 
