@@ -33,6 +33,7 @@ export default function ProductosPage() {
         salePrice: '',
         margin: '',
         stock: '',
+        minStock: '0',
         categoryId: ''
     });
     const [saving, setSaving] = useState(false);
@@ -61,7 +62,7 @@ export default function ProductosPage() {
 
     function openCreate() {
         setEditingId(null);
-        setForm({ name: '', barcode: '', costPrice: '', salePrice: '', margin: '', stock: '0', categoryId: categoriesList[0]?.id || '' });
+        setForm({ name: '', barcode: '', costPrice: '', salePrice: '', margin: '', stock: '0', minStock: '0', categoryId: categoriesList[0]?.id || '' });
         setShowModal(true);
     }
 
@@ -79,6 +80,7 @@ export default function ProductosPage() {
             salePrice: p.salePrice.toString(),
             margin: mStr,
             stock: p.stock.toString(),
+            minStock: p.minStock.toString(),
             categoryId: p.categoryId || (categoriesList[0]?.id || '')
         });
         setShowModal(true);
@@ -159,6 +161,7 @@ export default function ProductosPage() {
         const cp = parseFloat(form.costPrice);
         const sp = parseFloat(form.salePrice);
         const st = parseInt(form.stock, 10);
+        const ms = parseInt(form.minStock, 10);
 
         if (isNaN(cp) || cp < 0) { toast('Precio de costo inválido', 'error'); return; }
         if (isNaN(sp) || sp < 0) { toast('Precio de venta inválido', 'error'); return; }
@@ -172,6 +175,7 @@ export default function ProductosPage() {
                 costPrice: cp,
                 salePrice: sp,
                 stock: st,
+                minStock: isNaN(ms) ? 0 : ms,
                 categoryId: form.categoryId || undefined
             };
 
@@ -303,9 +307,15 @@ export default function ProductosPage() {
                                         </td>
                                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatARS(p.salePrice)}</td>
                                         <td style={{ textAlign: 'center' }}>
-                                            <span className={`badge ${p.stock <= 5 ? (p.stock <= 0 ? 'badge-danger' : 'badge-warning') : 'badge-success'}`}>
+                                            <span className={`badge ${p.stock <= 0 ? 'badge-danger'
+                                                    : p.minStock > 0 && p.stock <= p.minStock ? 'badge-warning'
+                                                        : 'badge-success'
+                                                }`}>
                                                 {p.stock}
                                             </span>
+                                            {p.minStock > 0 && p.stock <= p.minStock && (
+                                                <span title={`Mínimo: ${p.minStock}`} style={{ marginLeft: '4px', fontSize: '0.7rem' }}>⚠️</span>
+                                            )}
                                         </td>
                                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                             <button className="btn btn-primary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => openStock(p)}>📦 Lote</button>
@@ -360,12 +370,17 @@ export default function ProductosPage() {
                                     <input className="input" type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} placeholder="0" />
                                 </div>
                                 <div style={{ flex: 1 }}>
+                                    <label className="input-label">Stock Mínimo ⚠️</label>
+                                    <input className="input" type="number" min="0" value={form.minStock} onChange={e => setForm({ ...form, minStock: e.target.value })} placeholder="0" />
+                                    <small style={{ color: 'var(--text2)', fontSize: '0.72rem', display: 'block', marginTop: '3px' }}>Alerta cuando baje de este número</small>
+                                </div>
+                                <div style={{ flex: 1 }}>
                                     <label className="input-label">Categoría</label>
                                     <select
                                         className="input"
                                         value={form.categoryId}
                                         onChange={e => setForm({ ...form, categoryId: e.target.value })}
-                                        style={{ height: '38px' }} // Match normal input height
+                                        style={{ height: '38px' }}
                                     >
                                         <option value="" disabled>Seleccione...</option>
                                         {categoriesList.map(c => (

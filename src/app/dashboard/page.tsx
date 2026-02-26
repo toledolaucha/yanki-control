@@ -80,7 +80,7 @@ export default function DashboardPage() {
         return <div style={{ color: 'var(--text2)', padding: '2rem' }}>Cargando dashboard...</div>;
     }
 
-    const { today, last7, totals, topMargin, topSelling } = metrics;
+    const { today, last7, totals, topMargin, topSelling, lowStock } = metrics;
     const maxVentas = Math.max(...last7.map((d: any) => d.ventas), 1);
     const hasOpenShift = activeShift !== null;
 
@@ -282,6 +282,28 @@ export default function DashboardPage() {
                     )}
                 </div>
             </div>
+
+            {/* --- Low Stock Alert Widget --- */}
+            {lowStock && lowStock.length > 0 && (
+                <div className="card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                    <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+                        ⚠️ Reponer Pronto ({lowStock.length})
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {lowStock.map((p: any) => (
+                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.5rem', background: 'rgba(245,158,11,0.08)', borderRadius: '6px' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+                                    <span style={{ color: p.stock <= 0 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
+                                        {p.stock <= 0 ? '❌ Sin stock' : `${p.stock} ud.`}
+                                    </span>
+                                    <span style={{ color: 'var(--text2)' }}>mín. {p.minStock}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* --- PHASE 7: Analytics (Top Products) --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
