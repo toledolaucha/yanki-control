@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yanki Control (Next.js + Prisma + NextAuth)
 
-## Getting Started
+Aplicación de control de caja/turnos para kiosko.
 
-First, run the development server:
+## Cambios recomendados para producción (aplicados)
+
+- Base de datos estandarizada en **PostgreSQL** (antes el schema de Prisma estaba en SQLite y el compose en Postgres).
+- `docker-compose.yml` con servicios `db` + `app` para levantar todo con un solo comando.
+- `Dockerfile` multi-stage para build y runtime de producción.
+- Seed de Prisma en JavaScript (`prisma/seed.js`) para evitar dependencia implícita de `ts-node`.
+- `.env.example` con variables mínimas necesarias.
+
+## Variables de entorno
+
+Copiar `.env.example` a `.env` y completar valores reales:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Variables mínimas:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Desarrollo local
 
-## Learn More
+1. Levantar PostgreSQL:
+   ```bash
+   docker compose up -d db
+   ```
+2. Instalar dependencias:
+   ```bash
+   npm ci
+   ```
+3. Preparar base:
+   ```bash
+   npm run db:generate
+   npm run db:push
+   npm run db:seed
+   ```
+4. Ejecutar app:
+   ```bash
+   npm run dev
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+## Producción fácil (Docker Compose)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> Recomendado para deploy rápido sin romper consistencia de entorno.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Configurar secretos reales en `.env`.
+2. Levantar servicios:
 
-## Deploy on Vercel
+```bash
+docker compose up -d --build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Esto arranca:
+- PostgreSQL (`db`)
+- Next.js (`app`) en `http://localhost:3000`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts útiles
+
+- `npm run build`: build de Next.js
+- `npm run start`: arranque producción
+- `npm run db:generate`: genera cliente Prisma
+- `npm run db:push`: sincroniza schema (entornos simples)
+- `npm run db:migrate`: aplica migraciones de producción
+- `npm run db:seed`: ejecuta seed
+
+## Usuario inicial (seed)
+
+- Email: `admin@yanki.com.ar`
+- Password: `theyanki`
+
+> Cambiar credenciales y rotar secretos antes de exponer en internet.
