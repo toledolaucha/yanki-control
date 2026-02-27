@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yanki Control
 
-## Getting Started
+Aplicación Next.js con Prisma y PostgreSQL.
 
-First, run the development server:
+## Scripts útiles
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
+npm run prisma:generate
+npm run prisma:migrate:deploy
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Comando de build recomendado para Vercel
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Usar este comando en **Build Command**:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+prisma generate && next build
+```
 
-## Learn More
+> Este comando ya está configurado en `npm run build`.
 
-To learn more about Next.js, take a look at the following resources:
+## Estrategia de migraciones
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Producción**: ejecutar `prisma migrate deploy`.
+- **Desarrollo**: usar `prisma migrate dev`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy en Vercel
 
-## Deploy on Vercel
+### Primer deploy (proyecto nuevo)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Configurar variables de entorno en Vercel (al menos `DATABASE_URL` y las requeridas por auth).
+2. Confirmar que el **Build Command** sea:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   ```bash
+   prisma generate && next build
+   ```
+
+3. Realizar el deploy inicial.
+4. Luego del primer deploy, aplicar migraciones en base de datos de producción:
+
+   ```bash
+   npm run prisma:migrate:deploy
+   ```
+
+5. (Opcional recomendado) Regenerar cliente local tras cambios de schema:
+
+   ```bash
+   npm run prisma:generate
+   ```
+
+### Redeploy (nuevas versiones)
+
+1. Si hubo cambios en `prisma/schema.prisma` con migraciones nuevas, aplicarlas en producción:
+
+   ```bash
+   npm run prisma:migrate:deploy
+   ```
+
+2. Hacer redeploy desde Vercel (o push a la rama conectada).
+3. Verificar logs de build y runtime.
+
+## Flujo de desarrollo local
+
+1. Crear una migración y aplicarla localmente:
+
+   ```bash
+   npx prisma migrate dev --name <nombre-migracion>
+   ```
+
+2. Levantar la app:
+
+   ```bash
+   npm run dev
+   ```
