@@ -146,6 +146,30 @@ export async function closeShift(shiftId: string, finalCash: number, finalMp: nu
     return mapShift(shift);
 }
 
+export async function deleteShift(shiftId: string): Promise<void> {
+    const user = await getUser();
+    if (!user || user.role !== 'ADMIN') throw new Error('No autorizado');
+
+    const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
+    if (!shift) throw new Error('Turno no encontrado');
+
+    // Delete transactions first (cascade may not be set)
+    await prisma.transaction.deleteMany({ where: { shift_id: shiftId } });
+    await prisma.shift.delete({ where: { id: shiftId } });
+
+    await prisma.auditLog.create({
+        data: {
+            user_id: user.id,
+            action: 'DELETE_SHIFT',
+            entity: 'Shift',
+            entity_id: shiftId,
+            new_data: JSON.stringify(shift)
+        }
+    });
+
+    revalidatePath('/dashboard/reportes');
+}
+
 export async function addTransaction(data: {
     shiftId: string,
     type: 'ingreso' | 'egreso',
