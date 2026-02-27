@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yanki Control
 
-## Getting Started
+Aplicación Next.js para gestión de caja/turnos con Prisma y PostgreSQL.
 
-First, run the development server:
+## Requisitos
+
+- Node.js 20+
+- Docker (opcional para desarrollo local)
+
+## Variables de entorno
+
+Copiá el archivo de ejemplo y completá valores reales:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Variables mínimas:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`: conexión de runtime usada por la app y Prisma Client.
+- `DIRECT_URL` (opcional): conexión directa para migraciones/comandos Prisma.
+- `NEXTAUTH_SECRET`: secreto de NextAuth.
+- `NEXTAUTH_URL`: URL base de la app (ejemplo: `http://localhost:3000`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Base de datos (PostgreSQL)
 
-## Learn More
+El proyecto está configurado con Prisma usando `provider = "postgresql"`.
 
-To learn more about Next.js, take a look at the following resources:
+### Desarrollo local con Docker Compose
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+docker compose up -d db
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Si querés levantar app + base:
 
-## Deploy on Vercel
+```bash
+docker compose up -d
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`docker-compose.yml` usa las mismas variables que cloud (`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`) para mantener paridad entre entornos.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Prisma
+
+Comandos típicos:
+
+```bash
+npx prisma generate
+npx prisma migrate dev
+```
+
+> `DIRECT_URL` se usa para migraciones cuando está disponible; si no, Prisma utiliza `DATABASE_URL`.
+
+## Deploy en Vercel
+
+Proveedor recomendado de PostgreSQL administrado (cualquiera de estos):
+
+- Neon
+- Supabase
+- Railway
+- Render PostgreSQL
+
+### Pasos sugeridos
+
+1. Crear una base PostgreSQL en tu proveedor elegido.
+2. Copiar la cadena de conexión principal en `DATABASE_URL`.
+3. (Opcional) Copiar una conexión directa/no pooler en `DIRECT_URL` para migraciones.
+4. En Vercel: **Project → Settings → Environment Variables**.
+5. Cargar:
+   - `DATABASE_URL`
+   - `DIRECT_URL` (opcional)
+   - `NEXTAUTH_SECRET`
+   - `NEXTAUTH_URL` (por ejemplo el dominio de producción)
+6. Redeploy del proyecto.
+
+## Desarrollo
+
+```bash
+npm install
+npm run dev
+```
+
+Abrí [http://localhost:3000](http://localhost:3000).
