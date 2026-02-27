@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yanki Control
 
-## Getting Started
+Aplicación Next.js para gestión de caja con autenticación y base de datos PostgreSQL.
 
-First, run the development server:
+## Variables de entorno
+
+Copia `env.example` como `.env.local` para desarrollo local y completa los valores.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Variables obligatorias:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`: conexión a PostgreSQL.
+- `NEXTAUTH_SECRET`: secreto usado por NextAuth para firmar tokens/sesiones.
+- `NEXTAUTH_URL`: URL base pública de la aplicación.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+La app valida estas variables al arrancar y falla de forma explícita si falta alguna.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Local (con Docker DB)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Instalar dependencias:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ```bash
+   npm install
+   ```
 
-## Deploy on Vercel
+2. Levantar PostgreSQL con Docker:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   ```bash
+   docker compose up -d db
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. Crear `.env.local` desde el ejemplo (`env.example`).
+
+   URL recomendada para este `docker-compose.yml`:
+
+   ```env
+   DATABASE_URL="postgresql://root:password@localhost:5432/kiosko_db"
+   NEXTAUTH_SECRET="tu-secreto-largo-y-aleatorio"
+   NEXTAUTH_URL="http://localhost:3000"
+   ```
+
+4. Aplicar esquema de Prisma:
+
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+5. (Opcional) Cargar datos iniciales:
+
+   ```bash
+   npx prisma db seed
+   ```
+
+6. Ejecutar en desarrollo:
+
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## Staging
+
+Recomendación: usar un proyecto de Vercel separado para staging y una base de datos independiente.
+
+1. Desplegar desde la rama de staging.
+2. Configurar en Vercel las variables de entorno para el entorno **Preview** (y/o **Staging** si lo manejas externo):
+   - `DATABASE_URL` (base de staging)
+   - `NEXTAUTH_SECRET` (secreto exclusivo de staging)
+   - `NEXTAUTH_URL` (URL pública de staging, por ejemplo `https://staging-tuapp.vercel.app`)
+3. Ejecutar migraciones contra la base de staging antes o durante el despliegue.
+
+---
+
+## Producción en Vercel
+
+1. Conectar el repositorio en Vercel.
+2. En **Project Settings → Environment Variables**, configurar para **Production**:
+   - `DATABASE_URL`
+   - `NEXTAUTH_SECRET`
+   - `NEXTAUTH_URL`
+3. Verificar que `NEXTAUTH_URL` coincida exactamente con el dominio de producción (por ejemplo `https://app.tudominio.com`).
+4. Ejecutar migraciones de Prisma contra la base de producción antes de promover cambios críticos.
+5. Desplegar la rama principal.
+
+### Variables en Vercel Project Settings (resumen claro)
+
+En Vercel debes definir **sí o sí** estas tres variables en cada entorno que uses (Preview/Staging/Production):
+
+- `DATABASE_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
+
+Sin esas variables, la aplicación fallará al iniciar.
